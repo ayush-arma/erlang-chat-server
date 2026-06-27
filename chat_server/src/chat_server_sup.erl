@@ -26,22 +26,32 @@ start_link() ->
 %%                  modules => modules()}   % optional
 init([]) ->
     SupFlags =
-        #{strategy => one_for_all,
-          intensity => 2,
-          period => 5},
+        #{
+            strategy => one_for_all,
+            intensity => 3,
+            period => 5
+        },
 
     LobbyChild =
-        #{id => chat_lobby,
-          start => {chat_lobby, start_link, []},
-          restart => permanent,
-          shutdown => 2000,
-          type => worker,
-          modules => [chat_lobby]},
+        #{
+            id => chat_lobby,
+            start => {chat_lobby, start_link, []},
+            restart => permanent,
+            shutdown => 2000,
+            type => worker,
+            modules => [chat_lobby]
+        },
 
+    RoomSupChild =
+        #{
+            id => chat_room_sup,
+            start => {chat_room_sup, start_link, []},
+            restart => permanent,
+            type => supervisor,
+            modules => [chat_room_sup]
+        },
 
-
-    ChildSpecs = [LobbyChild],
-
+    ChildSpecs = [LobbyChild, RoomSupChild],
 
     {ok, {SupFlags, ChildSpecs}}.
 

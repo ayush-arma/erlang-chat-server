@@ -7,8 +7,8 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
-%% We'll store the room names in a list inside our state map
--record(state, {rooms = []}).
+%% CRITICAL: In Phase 3, rooms is a MAP (#{}) tracking RoomName => Pid
+-record(state, {rooms = #{}}).
 
 %%%===================================================================
 %%% API
@@ -31,29 +31,35 @@ list_rooms() ->
 %%%===================================================================
 
 init([]) ->
-    {ok, #state{rooms = []}}.
+    {ok, #state{rooms = #{}}}.
 
 handle_call({create_room, RoomName}, _From, State) ->
-    %% Check if room already exists to prevent duplicates
-    case lists:member(RoomName, State#state.rooms) of
+    %% Correct Map-based check instead of lists:member
+    case maps:is_key(RoomName, State#state.rooms) of
         true ->
             {reply, {error, exists}, State};
         false ->
-            NewRooms = [RoomName | State#state.rooms],
-            {reply, ok, State#state{rooms = NewRooms}}
+            %% Dynamically start the process using our corrected simple_one_for_one supervisor
+            case chat_room_sup:start_room(RoomName) of
+                {ok, Pid} ->
+                    NewRooms = maps:put(RoomName, Pid, State#state.rooms),
+                    {reply, {ok, Pid}, State#state{rooms = NewRooms}};
+                Error ->
+                    {reply, {error, Error}, State}
+            end
     end;
 handle_call({delete_room, RoomName}, _From, State) ->
-    case lists:member(RoomName, State#state.rooms) of
-        true ->
-            NewRooms = lists:delete(RoomName, State#state.rooms),
+    case maps:find(RoomName, State#state.rooms) of
+        {ok, Pid} ->
+            exit(Pid, shutdown),
+            NewRooms = maps:remove(RoomName, State#state.rooms),
             {reply, ok, State#state{rooms = NewRooms}};
-        false ->
+        error ->
             {reply, {error, not_found}, State}
     end;
-
 handle_call(list_rooms, _From, State) ->
-    {reply, State#state.rooms, State};
-
+    RoomNames = maps:keys(State#state.rooms),
+    {reply, RoomNames, State};
 handle_call(_Request, _From, State) ->
     {reply, {error, unknown_call}, State}.
 
